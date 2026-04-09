@@ -1,2 +1,2 @@
 # parksmart-esp32
-ESP32 based smart parking system with web dashboard ,OTP based booking system and 
+ESP32 based smart parking system with web dashboard ,OTP based booking system and other simple features.
