@@ -1,11 +1,333 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ParkSmart</title>
+  <title>Smart Parking Dashboard</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #111;
+      color: #fff;
+      margin: 0;
+      padding: 20px;
+    }
+
+    h1 {
+      text-align: center;
+      margin-bottom: 10px;
+    }
+
+    .topbar {
+      max-width: 1000px;
+      margin: 0 auto 20px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .message {
+      padding: 12px 14px;
+      border-radius: 12px;
+      background: #1f1f1f;
+      border: 1px solid #333;
+      min-height: 20px;
+    }
+
+    .gate-box {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 14px;
+      padding: 12px;
+    }
+
+    .gate-box input {
+      flex: 1;
+      min-width: 220px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid #444;
+      background: #0f0f0f;
+      color: white;
+      outline: none;
+    }
+
+    .gate-box button,
+    .slot button {
+      padding: 10px 14px;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+
+    .gate-box button {
+      background: orange;
+      color: #111;
+    }
+
+    .stats {
+      max-width: 1000px;
+      margin: 0 auto 20px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      background: #1a1a1a;
+      border: 1px solid #333;
+    }
+
+    .grid {
+      max-width: 1000px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+    }
+
+    .slot {
+      background: #1b1b1b;
+      border: 1px solid #333;
+      border-radius: 18px;
+      padding: 16px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+    }
+
+    .slot-card {
+      border-radius: 14px;
+      padding: 18px;
+      min-height: 110px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      font-size: 15px;
+      line-height: 1.4;
+      color: #111;
+      font-weight: bold;
+    }
+
+    .free {
+      background: #3cb371;
+    }
+
+    .booked {
+      background: #f1c40f;
+    }
+
+    .occupied {
+      background: #ff5b5b;
+    }
+
+    .slot-meta {
+      margin-top: 12px;
+      font-size: 14px;
+      color: #ddd;
+      display: grid;
+      gap: 6px;
+    }
+
+    .slot-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 12px;
+      flex-wrap: wrap;
+    }
+
+    .book-btn {
+      background: #4caf50;
+      color: white;
+    }
+
+    .free-btn {
+      background: #e74c3c;
+      color: white;
+    }
+
+    .muted {
+      color: #aaa;
+      font-size: 13px;
+    }
+
+    .small {
+      font-size: 13px;
+      color: #ccc;
+    }
+  </style>
 </head>
 <body>
-  <h1>ParkSmart Parking System</h1>
+  <h1>🚗 Smart Parking Dashboard</h1>
+
+  <div class="topbar">
+    <div class="message" id="message">Connecting...</div>
+
+    <div class="gate-box">
+      <input id="passwordInput" type="text" maxlength="4" placeholder="Enter 4-digit booked-slot password" />
+      <button onclick="openGate()">Open Gate</button>
+    </div>
+  </div>
+
+  <div class="stats" id="stats">Loading status...</div>
+  <div class="grid" id="slots"></div>
+
+  <script>
+    const ESP_IP = "http://esp32's ip not mine"; // change this
+    const RATE = 0.001;
+
+    function setMessage(text) {
+      document.getElementById("message").textContent = text;
+    }
+
+    function fmtTime(sec) {
+      sec = Math.max(0, Math.floor(sec || 0));
+      const h = String(Math.floor(sec / 3600)).padStart(2, "0");
+      const m = String(Math.floor((sec % 3600) / 60)).padStart(2, "0");
+      const s = String(sec % 60).padStart(2, "0");
+      return `${h}:${m}:${s}`;
+    }
+
+    function fmtMoney(val) {
+      return Number(val || 0).toFixed(3);
+    }
+
+    async function getStatus() {
+      try {
+        const res = await fetch(`${ESP_IP}/status`);
+        const data = await res.json();
+        render(data);
+        setMessage("Connected to ESP32");
+      } catch (e) {
+        document.getElementById("slots").innerHTML = "";
+        document.getElementById("stats").textContent = "ESP32 not reachable";
+        setMessage("Cannot reach ESP32. Check WiFi and IP.");
+      }
+    }
+
+    function render(data) {
+      const slots = document.getElementById("slots");
+      const stats = document.getElementById("stats");
+      slots.innerHTML = "";
+
+      const freeSlots = data.freeSlots ?? 0;
+      const hasBooking = data.hasBooking ? "Yes" : "No";
+
+      stats.innerHTML = `
+        <div><b>Free slots:</b> ${freeSlots}</div>
+        <div><b>Any booking:</b> ${hasBooking}</div>
+        <div class="small">Booked slots are yellow, occupied slots are red.</div>
+      `;
+
+      for (let i = 1; i <= 4; i++) {
+        const s = (data.slots && data.slots[`slot${i}`]) ? data.slots[`slot${i}`] : {};
+        const occupied = !!Number(s.occupied);
+        const booked = !!Number(s.booked);
+        const password = s.password || "";
+        const parkedSec = Number(s.parkedSec || 0);
+        const rent = Number(s.rent || 0);
+
+        let stateClass = "free";
+        let stateLabel = "FREE";
+
+        if (occupied) {
+          stateClass = "occupied";
+          stateLabel = "OCCUPIED";
+        } else if (booked) {
+          stateClass = "booked";
+          stateLabel = "BOOKED";
+        }
+
+        const card = document.createElement("div");
+        card.className = "slot";
+        card.innerHTML = `
+          <div class="slot-card ${stateClass}">
+            <div>Slot ${i}</div>
+            <div>${stateLabel}</div>
+          </div>
+          <div class="slot-meta">
+            <div><b>Password:</b> ${booked ? password : "-"}</div>
+            <div><b>Parked time:</b> ${occupied ? fmtTime(parkedSec) : "-"}</div>
+            <div><b>Rent:</b> ${occupied ? "$" + fmtMoney(rent) : "-"}</div>
+          </div>
+          <div class="slot-actions"></div>
+        `;
+
+        const actions = card.querySelector(".slot-actions");
+
+        if (!booked && !occupied) {
+          const btn = document.createElement("button");
+          btn.className = "book-btn";
+          btn.textContent = "Book";
+          btn.onclick = () => bookSlot(i);
+          actions.appendChild(btn);
+        } else {
+          const btn = document.createElement("button");
+          btn.className = "free-btn";
+          btn.textContent = "Free";
+          btn.onclick = () => freeSlot(i);
+          actions.appendChild(btn);
+        }
+
+        slots.appendChild(card);
+      }
+    }
+
+    async function bookSlot(slot) {
+      try {
+        const res = await fetch(`${ESP_IP}/book?slot=${slot}`);
+        const data = await res.json();
+
+        if (data.ok) {
+          setMessage(`Slot ${data.slot} booked. Password: ${data.password}`);
+        } else {
+          setMessage(data.message || "Booking failed");
+        }
+        await getStatus();
+      } catch (e) {
+        setMessage("Booking request failed");
+      }
+    }
+
+    async function freeSlot(slot) {
+      try {
+        const res = await fetch(`${ESP_IP}/free?slot=${slot}`);
+        const data = await res.json();
+
+        if (data.ok) {
+          setMessage(`Slot ${data.slot} cleared`);
+        } else {
+          setMessage(data.message || "Free request failed");
+        }
+        await getStatus();
+      } catch (e) {
+        setMessage("Free request failed");
+      }
+    }
+
+    async function openGate() {
+      const pass = document.getElementById("passwordInput").value.trim();
+
+      if (!/^\d{4}$/.test(pass)) {
+        setMessage("Enter a valid 4-digit password");
+        return;
+      }
+
+      try {
+        const res = await fetch(`${ESP_IP}/enter?password=${pass}`);
+        const data = await res.json();
+
+        if (data.ok) {
+          setMessage(`Gate opened for booked slot ${data.slot}`);
+          document.getElementById("passwordInput").value = "";
+        } else {
+          setMessage(data.message || "Access denied");
+        }
+      } catch (e) {
+        setMessage("Gate request failed");
+      }
+    }
+
+    setInterval(getStatus, 1000);
+    getStatus();
+  </script>
 </body>
 </html>
